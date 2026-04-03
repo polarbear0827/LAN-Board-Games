@@ -10,6 +10,9 @@ jobs:
   build-and-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      NEXT_TELEMETRY_DISABLED: 1
 
     steps:
     - name: 🔍 Checkout Repository
@@ -18,7 +21,7 @@ jobs:
     - name: 🛠️ Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 20
+        node-version: 24
         cache: 'npm'
 
     - name: 📦 Install Dependencies
@@ -27,26 +30,27 @@ jobs:
     - name: 🏗️ Next.js Build Check
       run: npm run build
       env:
-        # 這裡不需要真實的 API Key，僅供編譯時環境變數校驗通過
         GROQ_API_KEY: "ci_test_key"
         NEXT_PUBLIC_AI_PROVIDER: "groq"
 
     - name: 🚦 Server Start & Health Check
       run: |
-        # Background run the server
-        npm run dev &
+        # 使用生產模式啟動服務，這比 dev 模式更穩定
+        NODE_ENV=production node server.js &
         
-        # Wait for the server to be ready
-        echo "Waiting for server to start..."
-        MAX_RETRIES=30
+        echo "Waiting for server to start (Max 60s)..."
+        MAX_RETRIES=60
         COUNT=0
         until curl -s http://localhost:3000 > /dev/null || [ $COUNT -eq $MAX_RETRIES ]; do
           sleep 1
           COUNT=$((COUNT+1))
+          if [ $((COUNT % 10)) -eq 0 ]; then
+            echo "...still waiting ($COUNT/60s)"
+          fi
         done
         
         if [ $COUNT -eq $MAX_RETRIES ]; then
-          echo "❌ Server failed to start within 30 seconds"
+          echo "❌ Server failed to start within 60 seconds"
           exit 1
         else
           echo "✅ Server is UP and responding"
