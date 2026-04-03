@@ -42,17 +42,11 @@ export default function Werewolf() {
   const lastPhase = React.useRef<string | null>(null);
   const { startDrone } = DroneOscillator();
   
-  if (!room || !playerId) return null;
-
-  const { gameState } = room;
-  const data = gameState.data;
-  const myRole = data.roles[playerId];
-  const myStatus = data.status[playerId];
-  const alivePlayers = Object.keys(data.status).filter(id => data.status[id].alive);
-
   // 語音播放邏輯
   React.useEffect(() => {
-    if (!audioStarted || data.phase === lastPhase.current) return;
+    if (!room || !playerId || !audioStarted) return;
+    const data = room.gameState.data;
+    if (data.phase === lastPhase.current) return;
     
     const script = WEREWOLF_SCRIPTS[data.phase];
     if (script) {
@@ -62,7 +56,15 @@ export default function Werewolf() {
       window.speechSynthesis.speak(utterance);
     }
     lastPhase.current = data.phase;
-  }, [data.phase, audioStarted]);
+  }, [room, playerId, audioStarted]);
+
+  if (!room || !playerId) return null;
+
+  const { gameState } = room;
+  const data = gameState.data;
+  const myRole = data.roles[playerId];
+  const myStatus = data.status[playerId];
+  const alivePlayers = Object.keys(data.status).filter((id: any) => data.status[id].alive);
 
   // 夜晚閉眼判定
   const isMyTurn = (

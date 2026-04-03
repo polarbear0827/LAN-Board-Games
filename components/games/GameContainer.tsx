@@ -23,6 +23,7 @@ const GAMES = [
 export default function GameContainer() {
   const { room, playerId, sendAction, aiConfig, updateAiConfig } = useGame();
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [showConfirmQuit, setShowConfirmQuit] = useState(false);
 
   if (!room) return null;
 
@@ -44,8 +45,6 @@ export default function GameContainer() {
         return <div className="text-center p-12 glass rounded-3xl">未知的遊戲類型</div>;
     }
   };
-
-  const [showConfirmQuit, setShowConfirmQuit] = useState(false);
 
   const handleQuit = () => {
     sendAction('END_GAME');

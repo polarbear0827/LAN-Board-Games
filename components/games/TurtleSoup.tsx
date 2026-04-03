@@ -16,11 +16,48 @@ export default function TurtleSoup() {
   const [isGettingHint, setIsGettingHint] = useState(false);
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
 
+  const handleAnswer = React.useCallback((questionId: number, answer: string) => {
+    sendAction('TURTLE_SOUP_MOVE', { type: 'ANSWER', questionId, answer });
+  }, [sendAction]);
+
+  const handleSolved = React.useCallback(() => {
+    sendAction('TURTLE_SOUP_MOVE', { type: 'SOLVED' });
+  }, [sendAction]);
+
+  const askAi = React.useCallback(async (q: any, currentData: any) => {
+    setIsAiAnswering(true);
+    try {
+      const systemPrompt = `你是一個海龜湯（情境猜謎）的湯主。\n題目：${currentData.story}\n真相：${currentData.truth}\n\n玩家提問：${q.text}\n\n規則：\n1. 你只能回答「是」、「不是」或「無關」。\n2. 如果玩家問的內容與真相核心非常接近，可以回答「是，且非常接近關鍵」。\n3. 如果玩家完全猜中真相，請回答「完全正確，恭喜破案！」。\n4. 嚴禁直接洩漏真相細節，除非玩家問對。\n5. 請保持神祕感且回答簡短。`;
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: aiConfig.provider, apiKey: aiConfig.apiKey, model: aiConfig.model,
+          messages: [{ role: 'system', content: systemPrompt }]
+        })
+      });
+      const resData = await res.json();
+      const aiReply = resData.content || "無關";
+      handleAnswer(q.id, aiReply);
+      if (aiReply.includes("完全正確") || aiReply.includes("恭喜破案")) {
+        setTimeout(handleSolved, 2000);
+      }
+    } catch (e) { console.error("AI Answer Failed", e); }
+    finally { setIsAiAnswering(false); }
+  }, [aiConfig, handleAnswer, handleSolved]);
+
+  // AI 自動回答邏輯
+  React.useEffect(() => {
+    if (!room || !playerId || !aiConfig.isEnabled || isAiAnswering) return;
+    const data = room.gameState.data;
+    const unanswered = data.questions?.filter((q: any) => q.answer === null);
+    if (room.hostId === playerId && unanswered?.length > 0) {
+      askAi(unanswered[0], data);
+    }
+  }, [room, playerId, aiConfig.isEnabled, isAiAnswering, askAi]);
+
   if (!room || !playerId) return null;
 
-  const { gameState, players } = room;
-  const data = gameState.data;
-  // 如果是 AI 湯主模式且還沒結案，就算你是房主，也不具備「湯主」權限看謎底
+  const data = room.gameState.data;
   const isNarrator = data.narrator === playerId;
   const isAiNarrator = data.narrator === 'AI';
   const canSeeTruth = isNarrator || data.isSolved;
@@ -36,42 +73,17 @@ export default function TurtleSoup() {
     setInputText("");
   };
 
-  const handleAnswer = (questionId: number, answer: string) => {
-    sendAction('TURTLE_SOUP_MOVE', { type: 'ANSWER', questionId, answer });
-  };
-
-  const handleSolved = () => {
-    sendAction('TURTLE_SOUP_MOVE', { type: 'SOLVED' });
-  };
-
   const handleRandomAiStory = () => {
     const randomIdx = Math.floor(Math.random() * TURTLE_SOUP_QUESTIONS.length);
     const q = TURTLE_SOUP_QUESTIONS[randomIdx];
-    sendAction('TURTLE_SOUP_MOVE', { 
-      type: 'SET_STORY', 
-      story: q.question, 
-      truth: q.answer 
-    });
+    sendAction('TURTLE_SOUP_MOVE', { type: 'SET_STORY', story: q.question, truth: q.answer });
   };
 
   const handleAiGenerateStory = async () => {
     if (isGeneratingStory) return;
     setIsGeneratingStory(true);
     try {
-      const systemPrompt = `你是一個創意無限的海龜湯（情境猜謎）構思者。
-請生成一個全新、原創且具有震撼反轉的海龜湯題目。
-
-輸出格式必須為 JSON：
-{
-  "question": "故事的開頭（給玩家看的謎題）",
-  "answer": "故事的真相（真相必須邏輯自洽且具有反轉感）"
-}
-
-要求：
-1. 故事要驚悚或溫馨，感人或詭異均可，但必須邏輯通順。
-2. 真相不能太直白，需要多層次思考。
-3. 繁體中文輸出。`;
-
+      const systemPrompt = `你是一個創意無限的海龜湯構思者。請生成一個全新、原創且具有震撼反轉的海龜湯題目。輸出格式為 JSON：{"question": "...", "answer": "..."}`;
       const res = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -80,25 +92,14 @@ export default function TurtleSoup() {
         })
       });
       const resData = await res.json();
-      // 嘗試解析 JSON 或直接使用內容
       let parsed;
-      try {
-        parsed = JSON.parse(resData.content);
-      } catch (e) {
-        // 如果不是 JSON，嘗試正則提取
+      try { parsed = JSON.parse(resData.content); } catch (e) {
         const qMatch = resData.content.match(/"question":\s*"(.*?)"/m);
         const aMatch = resData.content.match(/"answer":\s*"(.*?)"/m);
         if (qMatch && aMatch) parsed = { question: qMatch[1], answer: aMatch[1] };
       }
-
       if (parsed?.question && parsed?.answer) {
-        sendAction('TURTLE_SOUP_MOVE', { 
-          type: 'SET_STORY', 
-          story: parsed.question, 
-          truth: parsed.answer 
-        });
-      } else {
-        alert("AI 生成失敗，請重試或切換模型。");
+        sendAction('TURTLE_SOUP_MOVE', { type: 'SET_STORY', story: parsed.question, truth: parsed.answer });
       }
     } catch (e) { console.error("Generation Failed", e); }
     finally { setIsGeneratingStory(false); }
@@ -108,12 +109,7 @@ export default function TurtleSoup() {
     if (isGettingHint) return;
     setIsGettingHint(true);
     try {
-      const systemPrompt = `你是一個海龜湯的提示者。
-題目：${data.story}
-真相：${data.truth}
-
-請針對目前的問答進度給出一個「隱晦但有幫助」的小提示，只能給一句話，絕對不可以直接說出真相關鍵。`;
-      
+      const systemPrompt = `你是一個海龜湯提示者。題目：${data.story}\n真相：${data.truth}\n請給出一個隱晦但有幫助的小提示。`;
       const res = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,58 +123,6 @@ export default function TurtleSoup() {
       }
     } catch (e) { console.error("Hint Failed", e); }
     finally { setIsGettingHint(false); }
-  };
-
-  // AI 自動回答邏輯
-  React.useEffect(() => {
-    const unanswered = data.questions?.filter((q: any) => q.answer === null);
-    // 只有房主負責觸發 AI 回答（避免多個客戶端重複請求，且確保有 API Key 的房主執行）
-    if (room.hostId === playerId && aiConfig.isEnabled && unanswered?.length > 0 && !isAiAnswering) {
-      const q = unanswered[0];
-      askAi(q);
-    }
-  }, [data.questions, aiConfig.isEnabled, room.hostId, playerId, isAiAnswering]);
-
-  const askAi = async (q: any) => {
-    setIsAiAnswering(true);
-    try {
-      const systemPrompt = `你是一個海龜湯（情境猜謎）的湯主。
-題目：${data.story}
-真相：${data.truth}
-
-玩家提問：${q.text}
-
-規則：
-1. 你只能回答「是」、「不是」或「無關」。
-2. 如果玩家問的內容與真相核心非常接近，可以回答「是，且非常接近關鍵」。
-3. 如果玩家完全猜中真相，請回答「完全正確，恭喜破案！」。
-4. 嚴禁直接洩漏真相細節，除非玩家問對。
-5. 請保持神祕感且回答簡短。`;
-
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: aiConfig.provider,
-          apiKey: aiConfig.apiKey,
-          model: aiConfig.model,
-          messages: [{ role: 'system', content: systemPrompt }]
-        })
-      });
-      const resData = await res.json();
-      const aiReply = resData.content || "無關";
-      
-      handleAnswer(q.id, aiReply);
-
-      // 自動結案判定
-      if (aiReply.includes("完全正確") || aiReply.includes("恭喜破案")) {
-        setTimeout(handleSolved, 2000);
-      }
-    } catch (e) {
-      console.error("AI Answer Failed", e);
-    } finally {
-      setIsAiAnswering(false);
-    }
   };
 
   return (

@@ -13,21 +13,20 @@ export default function LiarsDice() {
   const [bidAmount, setBidAmount] = useState(1);
   const [bidFace, setBidFace] = useState(2);
 
+  // 初始化自定義骰子 (如果是新的一局且我還沒骰子)
+  useEffect(() => {
+    if (!room || !playerId) return;
+    const gameData = room.gameState.data;
+    if (gameData.status === 'ROUND_START' && !gameData.dice?.[playerId]) {
+      // 實際邏輯應該由 Server 統一生成並發送私有數據
+    }
+  }, [room, playerId]);
+
   if (!room || !playerId) return null;
 
   const { gameState, players } = room;
   const gameData = gameState.data;
-  const myPlayer = players[playerId];
   const isMyTurn = players[Object.keys(players)[gameData.currentPlayerIndex || 0]]?.id === playerId;
-  
-  // 初始化自定義骰子 (如果是新的一局且我還沒骰子)
-  useEffect(() => {
-    if (gameData.status === 'ROUND_START' && !gameData.dice?.[playerId]) {
-      // 實際邏輯應該由 Server 統一生成並發送私有數據，
-      // 但為了簡化 LAN Demo，我們在 Client 生成後同步（或由 Host 生成）
-      // 這裡採用最簡單的：由 Host 在進入 PLAYING 狀態時初始化所有人的骰子
-    }
-  }, [gameData.status]);
 
   const handleBid = () => {
     if (!isMyTurn) return;
