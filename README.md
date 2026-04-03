@@ -1,6 +1,6 @@
 # 🎮 LAN Board Game Online (全能聚會遊戲平台)
 
-![Project Banner](https://raw.githubusercontent.com/polarbear0827/LAN-Board-Games/main/public/banner_placeholder.png)
+![Project Banner](assets/banner.png)
 
 一套專為區域網路與好友聚會打造的 **全能板凳遊戲平台**。
 結合了 **Next.js 14**, **Socket.io** 實時同步技術，以及強大的 **Groq AI** 遊戲主持系統。
